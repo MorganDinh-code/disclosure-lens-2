@@ -1,0 +1,56 @@
+import html
+
+import streamlit as st
+
+import ui
+from disclosure_lens.metrics import annotate, summarize
+from disclosure_lens.preprocess import parse_document
+
+with st.sidebar:
+    st.header("Input")
+    uploaded = st.file_uploader("Upload a .txt file", type=["txt"])
+    pasted = st.text_area("...or paste text here", height=200, help="Separate paragraphs with a blank line.")
+    if st.button("Use sample press release"):
+        st.session_state["use_sample"] = True
+
+text = None
+if uploaded is not None:
+    text = uploaded.read().decode("utf-8", errors="ignore")
+elif pasted.strip():
+    text = pasted
+elif st.session_state.get("use_sample"):
+    text = open("data/sample_release.txt", encoding="utf-8").read()
+
+if not text:
+    st.info("Upload a file, paste text, or choose **Use sample press release** in the sidebar.")
+    st.stop()
+
+records = annotate(parse_document(text))
+s = summarize(records)
+
+st.header("Disclosure Profile")
+ui.profile(s)
+
+st.header("Where the information sits")
+ui.strip([r["direction"] for r in records], [r["material_neg"] for r in records])
+
+st.header("Disclosure Map")
+st.caption("Left strip = what the FACT says. Right strip = how the WORDING sounds. "
+           "When they disagree on a negative fact, the row is flagged.")
+rows = []
+for r in records:
+    spin = r["direction"] == -1 and r["tone"] > 0
+    flag = '<span class="badge">possible spin</span> ' if spin else ""
+    mat = '<span class="badge" style="color:#C8534F;background:#C8534F22">material</span> ' if r["material_neg"] else ""
+    rows.append(
+        f'<div style="display:flex;align-items:stretch;margin-bottom:4px;font-size:.95rem">'
+        f'<div style="width:8px;background:{ui.FACT[r["direction"]]}"></div>'
+        f'<div style="width:8px;background:{ui.tone_color(r["tone"])};margin-right:12px"></div>'
+        f'<div style="width:34px;color:{ui.MUTED}">{r["index"]}</div>'
+        f'<div style="flex:1;padding:2px 0">{html.escape(r["text"])} {mat}{flag}</div>'
+        f'<div style="width:96px;text-align:right;color:{ui.MUTED};font-variant-numeric:tabular-nums">'
+        f'hedge {r["hedge_density"] * 100:.1f}%</div></div>')
+st.markdown("".join(rows), unsafe_allow_html=True)
+st.divider()
+st.caption("These are patterns to examine, not verdicts. Late placement or heavy hedging can have innocent "
+           "explanations. The tone word list is a placeholder pending the Loughran-McDonald dictionary.")
