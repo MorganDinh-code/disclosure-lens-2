@@ -1,54 +1,77 @@
-"""Run Disclosure Lens on a text file:  python analyze.py data/sample_release.txt"""
-import sys
+import html
 
+import streamlit as st
+
+import ui
+from disclosure_lens.checks import check_document, strip_boilerplate
 from disclosure_lens.metrics import annotate, summarize
 from disclosure_lens.preprocess import parse_document
 
-ICON = {1: "🟢", -1: "🔴", 0: "⚪"}
+with st.sidebar:
+    st.header("Input")
+    st.caption("Use the **written text** of an earnings press release or similar management commentary, "
+               "not tables of numbers.")
+    uploaded = st.file_uploader("Upload a .txt file", type=["txt"],
+                                help="Plain text only. PDFs are not supported yet: copy the text out first.")
+    pasted = st.text_area("...or paste text here", height=200,
+                          placeholder="Paste the press release text here. Put a blank line between paragraphs.")
+    if st.button("Use sample press release"):
+        st.session_state["use_sample"] = True
 
+text = None
+if uploaded is not None:
+    text = uploaded.read().decode("utf-8", errors="ignore")
+elif pasted.strip():
+    text = pasted
+elif st.session_state.get("use_sample"):
+    text = open("data/sample_release.txt", encoding="utf-8").read()
 
-def fmt(x, pct=False):
-    if x is None:
-        return "n/a"
-    return f"{x * 100:.0f}%" if pct else f"{x:.2f}"
+if not text:
+    st.header("What to analyze")
+    st.markdown("Disclosure Lens studies the **written narrative** companies place around their numbers. "
+                "It does not read financial statements.")
+    ui.guidelines()
+    st.info("Ready? Upload a file, paste text, or choose **Use sample press release** in the sidebar.")
+    st.stop()
 
+cleaned, n_removed = strip_boilerplate(text)
+if n_removed:
+    with st.sidebar:
+        drop = st.checkbox(f"Remove forward-looking statements disclaimer ({n_removed} paragraph"
+                           f"{'s' if n_removed > 1 else ''} found)", value=True)
+    if drop:
+        text = cleaned
+for w in check_document(text):
+    st.warning(w)
+with st.expander("What kind of document is this tool for?"):
+    ui.guidelines()
 
-def main(path: str):
-    text = open(path, encoding="utf-8").read()
-    records = annotate(parse_document(text))
+records = annotate(parse_document(text))
+s = summarize(records)
 
-    print("\n=== DISCLOSURE MAP (text version) ===\n")
-    for r in records:
-        tone_icon = "🟢" if r["tone"] > 0.05 else "🔴" if r["tone"] < -0.05 else "⚪"
-        flag = "  <-- SPIN?" if r["direction"] == -1 and r["tone"] > 0 else ""
-        mat = " [MATERIAL]" if r["material_neg"] else ""
-        print(f"{r['index']:>2}. fact {ICON[r['direction']]}  tone {tone_icon}  "
-              f"hedge {r['hedge_density'] * 100:4.1f}%{mat}{flag}")
-        print(f"    {r['text'][:90]}")
+st.header("Disclosure Profile")
+ui.profile(s)
 
-    s = summarize(records)
-    print("\n=== DISCLOSURE PROFILE ===\n")
-    print(f"Sentences: {s['n_sentences']}  (material negatives: {s['n_material_neg']}, positives: {s['n_positive']})")
-    print("\nINFORMATION ORDER")
-    print(f"  Avg position, negatives : {fmt(s.get('mean_pos_negative'), True)}")
-    print(f"  Avg position, positives : {fmt(s.get('mean_pos_positive'), True)}")
-    print(f"  Placement asymmetry     : {fmt(s.get('placement_asymmetry'), True)} (positive = bad news later)")
-    print(f"  Distance from headline  : {s.get('distance_from_headline', 'n/a')} sentences")
-    print("\nHEDGING")
-    print(f"  Near negatives          : {fmt(s.get('hedge_near_negative'), True)}")
-    print(f"  Near positives          : {fmt(s.get('hedge_near_positive'), True)}")
-    ha = s.get("hedging_asymmetry")
-    if ha is not None:
-        print(f"  Hedging asymmetry       : {fmt(ha)}x")
-    elif s.get("hedge_near_negative"):
-        print("  Hedging asymmetry       : undefined (no hedging near positives at all)")
-    else:
-        print("  Hedging asymmetry       : n/a")
-    print("\nTONE VS. FACTS")
-    print(f"  Negative facts framed in positive language: {fmt(s.get('framing_ratio'), True)}")
-    print(f"  Mean tone gap on negative facts           : {fmt(s.get('mean_tone_gap_on_negatives'))}")
-    print()
+st.header("Where the information sits")
+ui.strip([r["direction"] for r in records], [r["material_neg"] for r in records])
 
-
-if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "data/sample_release.txt")
+st.header("Disclosure Map")
+st.caption("Left strip = what the FACT says. Right strip = how the WORDING sounds. "
+           "When they disagree on a negative fact, the row is flagged.")
+rows = []
+for r in records:
+    spin = r["direction"] == -1 and r["tone"] > 0
+    flag = '<span class="badge">possible spin</span> ' if spin else ""
+    mat = '<span class="badge" style="color:#C8534F;background:#C8534F22">material</span> ' if r["material_neg"] else ""
+    rows.append(
+        f'<div style="display:flex;align-items:stretch;margin-bottom:4px;font-size:.95rem">'
+        f'<div style="width:8px;background:{ui.FACT[r["direction"]]}"></div>'
+        f'<div style="width:8px;background:{ui.tone_color(r["tone"])};margin-right:12px"></div>'
+        f'<div style="width:34px;color:{ui.MUTED}">{r["index"]}</div>'
+        f'<div style="flex:1;padding:2px 0">{html.escape(r["text"])} {mat}{flag}</div>'
+        f'<div style="width:96px;text-align:right;color:{ui.MUTED};font-variant-numeric:tabular-nums">'
+        f'hedge {r["hedge_density"] * 100:.1f}%</div></div>')
+st.markdown("".join(rows), unsafe_allow_html=True)
+st.divider()
+st.caption("These are patterns to examine, not verdicts. Late placement or heavy hedging can have innocent "
+           "explanations. The tone word list is a placeholder pending the Loughran-McDonald dictionary.")

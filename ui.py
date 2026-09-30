@@ -72,3 +72,27 @@ def profile(s):
         g = s.get("mean_tone_gap_on_negatives")
         st.metric("Mean tone gap on negatives", "n/a" if g is None else f"{g:.2f}",
                   help="Higher = more positive wording around negative facts.")
+
+
+def guidelines():
+    """What Disclosure Lens is (and is not) built for."""
+    c1, c2 = st.columns(2)
+    c1.markdown('<div class="card"><b>Built for</b><ul style="margin:.5rem 0 0 1rem;padding:0">'
+                '<li><strong>Earnings press releases</strong> (best starting point)</li>'
+                '<li>Earnings call transcripts, prepared remarks</li>'
+                '<li>MD&amp;A sections of 10-Q and 10-K filings</li>'
+                '<li>Shareholder letters and other management commentary</li></ul></div>',
+                unsafe_allow_html=True)
+    c2.markdown('<div class="card"><b>Not built for</b><ul style="margin:.5rem 0 0 1rem;padding:0">'
+                '<li>Financial statement tables (cash flow, balance sheet, income statement)</li>'
+                '<li>PDFs and scanned images (copy the text out first)</li>'
+                '<li>Complete 10-Ks (too long and mostly boilerplate)</li>'
+                '<li>Text in languages other than English</li></ul></div>', unsafe_allow_html=True)
+    st.markdown("""
+**How to prepare a document**
+1. **Find it.** Company websites list press releases under *Investors* or *Investor Relations*. The free official source is
+   [SEC EDGAR](https://www.sec.gov/edgar): search the company, open an **8-K** filing, then **Exhibit 99.1**.
+2. **Copy the written text only.** Skip the tables of numbers at the end.
+3. **Paste it or save it as a `.txt` file,** with a blank line between paragraphs.
+4. The tool removes the legal *forward-looking statements* disclaimer for you if it finds one, since it is almost entirely hedging.
+""")
