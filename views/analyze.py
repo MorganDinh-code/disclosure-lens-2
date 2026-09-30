@@ -3,13 +3,18 @@ import html
 import streamlit as st
 
 import ui
+from disclosure_lens.checks import check_document, strip_boilerplate
 from disclosure_lens.metrics import annotate, summarize
 from disclosure_lens.preprocess import parse_document
 
 with st.sidebar:
     st.header("Input")
-    uploaded = st.file_uploader("Upload a .txt file", type=["txt"])
-    pasted = st.text_area("...or paste text here", height=200, help="Separate paragraphs with a blank line.")
+    st.caption("Use the **written text** of an earnings press release or similar management commentary, "
+               "not tables of numbers.")
+    uploaded = st.file_uploader("Upload a .txt file", type=["txt"],
+                                help="Plain text only. PDFs are not supported yet: copy the text out first.")
+    pasted = st.text_area("...or paste text here", height=200,
+                          placeholder="Paste the press release text here. Put a blank line between paragraphs.")
     if st.button("Use sample press release"):
         st.session_state["use_sample"] = True
 
@@ -22,8 +27,24 @@ elif st.session_state.get("use_sample"):
     text = open("data/sample_release.txt", encoding="utf-8").read()
 
 if not text:
-    st.info("Upload a file, paste text, or choose **Use sample press release** in the sidebar.")
+    st.header("What to analyze")
+    st.markdown("Disclosure Lens studies the **written narrative** companies place around their numbers. "
+                "It does not read financial statements.")
+    ui.guidelines()
+    st.info("Ready? Upload a file, paste text, or choose **Use sample press release** in the sidebar.")
     st.stop()
+
+cleaned, n_removed = strip_boilerplate(text)
+if n_removed:
+    with st.sidebar:
+        drop = st.checkbox(f"Remove forward-looking statements disclaimer ({n_removed} paragraph"
+                           f"{'s' if n_removed > 1 else ''} found)", value=True)
+    if drop:
+        text = cleaned
+for w in check_document(text):
+    st.warning(w)
+with st.expander("What kind of document is this tool for?"):
+    ui.guidelines()
 
 records = annotate(parse_document(text))
 s = summarize(records)

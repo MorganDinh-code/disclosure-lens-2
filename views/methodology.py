@@ -1,5 +1,7 @@
 import streamlit as st
 
+import ui
+
 st.header("Methodology")
 st.markdown("Every sentence receives **two independent labels**: a *financial direction* (does the fact help or "
             "hurt the company?) and a *linguistic tone* (does the wording sound positive or negative?). "
@@ -57,3 +59,6 @@ st.markdown("- Financial direction is rule-based and not yet validated against h
             "- The tone word list is a placeholder pending the full Loughran-McDonald dictionary.\n"
             "- Some sections sit late by convention, so results are best compared across peers and quarters.\n"
             "- Flags are prompts for a closer reading, not conclusions about a company's intent.")
+
+st.subheader("Which documents to use")
+ui.guidelines()
